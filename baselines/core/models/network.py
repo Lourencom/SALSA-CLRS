@@ -25,6 +25,8 @@ class EncodeProcessDecode(torch.nn.Module):
         logger.debug(f"Decoder: {self.cfg.TRAIN.LOSS.HINT_LOSS_WEIGHT == 0.0}")
 
         if not self.processor.has_edge_weight() and not self.processor.has_edge_attr():
+            logger.warning(f"!!! Processor {self.cfg.MODEL.PROCESSOR.NAME} has no edge weight or edge attr")
+            logger.warning(specs)
             if "A" in specs:
                 logger.warning(f"Processor {self.cfg.MODEL.PROCESSOR.NAME} does neither support edge_weight nor edge_attr, but the algorithm requires edge weights.")
                 raise ValueError(f"Processor {self.cfg.MODEL.PROCESSOR.NAME} does neither support edge_weight nor edge_attr, but the algorithm requires edge weights.")
@@ -54,6 +56,7 @@ class EncodeProcessDecode(torch.nn.Module):
         for step in range(max_len):
             last_hidden = hidden
             for _ in range(self.cfg.MODEL.MSG_PASSING_STEPS):
+                # print(f"MODEL MODEL FORWARD: {self.edge_weight_name}")
                 hidden = self.processor(input_hidden, hidden, last_hidden, randomness=randomness[:, step] if randomness is not None else None, edge_index=batch.edge_index, batch_assignment=batch.batch, **{self.edge_weight_name: self.process_weights(batch) for _ in range(1) if hasattr(batch, 'weights') })
                 if self.cfg.MODEL.GRU.ENABLE:
                     hidden = self.gru(hidden, last_hidden)

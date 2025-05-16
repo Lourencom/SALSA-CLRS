@@ -165,9 +165,17 @@ def to_sparse_data(inputs, hints, outputs, use_hints=True):
         elif dp.location == clrs.Location.NODE:
             if dp.type_ == clrs.Type.POINTER:
                 # Convert pointers to one-hot edge masks
+                # For a pointer dp.data[0] (e.g., 'pi'), pi[i] = j means j is parent of i.
+                # pointer_matrix[i, j] = 1 if j is parent of i.
+                # This represents edges (j, i) from parent to child.
                 n = dp.data[0].shape[0]
                 pointer_matrix = pointer_to_one_hot(dp.data[0], n)
-                verify_sparseness(pointer_matrix, data_dict["edge_index"], dp.name)
+                
+                # Verify P.T: if P[child,parent]=1, P.T[parent,child]=1. Checks if (parent,child) edge exists in original graph.
+                verify_sparseness(pointer_matrix.T, data_dict["edge_index"], dp.name)
+                
+                # The actual feature is: for an edge (u,v) in edge_index, is v the parent of u?
+                # This corresponds to pointer_matrix[u,v] == 1.
                 data_dict[dp.name] = pointer_matrix[data_dict["edge_index"][0], data_dict["edge_index"][1]]
             else:
                 data_dict[dp.name] = infer_type(dp.type_, dp.data[0])
@@ -184,7 +192,7 @@ def to_sparse_data(inputs, hints, outputs, use_hints=True):
                 # Convert pointers to one-hot edge masks
                 n = dp.data[0].shape[0]
                 pointer_matrix = pointer_to_one_hot(dp.data[0], n)
-                verify_sparseness(pointer_matrix, data_dict["edge_index"], dp.name)
+                verify_sparseness(pointer_matrix.T, data_dict["edge_index"], dp.name)
                 data_dict[dp.name] = pointer_matrix[data_dict["edge_index"][0], data_dict["edge_index"][1]]
             else:
                 data_dict[dp.name] = infer_type(dp.type_, dp.data[0])
@@ -196,15 +204,17 @@ def to_sparse_data(inputs, hints, outputs, use_hints=True):
             hint_attributes.append(dp.name)
             if dp.location == clrs.Location.EDGE or (dp.location == clrs.Location.NODE and dp.type_ == clrs.Type.POINTER):
                 arr = dp.data.squeeze(1) # Hints, N, N, D (...)
-                if dp.location == clrs.Location.NODE:
-                    # arr is Hints, N, D (...)
-                    # Convert pointers to one-hot edge masks
+                if dp.location == clrs.Location.NODE: # POINTER type implicitly
+                    # arr is Hints, N, D (...) if D is single value (parent index)
+                    # pointer_to_one_hot converts (Hints, N) to (Hints, N, N)
+                    # where pointer_matrix_hint[h, child, parent] = 1
                     stages = []
                     for hd in range(arr.shape[0]):
-                        n = arr.shape[1]
-                        pointer_matrix = pointer_to_one_hot(arr[hd], n)
-                        verify_sparseness(pointer_matrix, data_dict["edge_index"], dp.name)
-                        stages.append(pointer_matrix)
+                        n = arr.shape[1] # Number of nodes
+                        pointer_matrix_hint_single_stage = pointer_to_one_hot(arr[hd], n) # (N,N)
+                        # Verify P.T: if P[child,parent]=1, P.T[parent,child]=1. Checks if (parent,child) edge exists.
+                        verify_sparseness(pointer_matrix_hint_single_stage.T, data_dict["edge_index"], f"{dp.name} hint stage {hd}")
+                        stages.append(pointer_matrix_hint_single_stage)
                     
                     arr = np.stack(stages, axis=0)
                 else:

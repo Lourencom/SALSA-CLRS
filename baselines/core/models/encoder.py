@@ -32,8 +32,9 @@ class Encoder(nn.Module):
         self.hidden_dim = hidden_dim
         self.encoder = nn.ModuleDict()
         for k, v in specs.items():
-            if k == "randomness": # randomness is not encoded
+            if k == "randomness" or k == "sampled_indices": # randomness is not encoded
                 continue
+            print(f"k: {k}, v:{v}")
             stage, loc, type_, cat_dim = v
             if loc == 'edge':
                 logger.debug(f'Ignoring edge encoder for {k}')
@@ -51,7 +52,7 @@ class Encoder(nn.Module):
     def forward(self, batch):
         hidden = None
         for key in batch.inputs:
-            if key == "randomness":
+            if key == "randomness" or key == "sampled_indices":
                 continue
             logger.debug(f"Encoding {key}")
             encoding = self.encoder[key](batch[key])
